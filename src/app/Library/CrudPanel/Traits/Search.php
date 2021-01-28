@@ -66,7 +66,7 @@ trait Search
                 case 'email':
                 case 'text':
                 case 'textarea':
-                    $query->orWhere($this->getColumnWithTableNamePrefixed($query, $column['name']), 'like', '%'.$searchTerm.'%');
+                    $query->orWhere($column['name'], 'like', '%'.$searchTerm.'%');
                     break;
 
                 case 'date':
@@ -77,13 +77,13 @@ trait Search
                         break;
                     }
 
-                    $query->orWhereDate($this->getColumnWithTableNamePrefixed($query, $column['name']), Carbon::parse($searchTerm));
+                    $query->orWhereDate($column['name'], Carbon::parse($searchTerm));
                     break;
 
                 case 'select':
                 case 'select_multiple':
                     $query->orWhereHas($column['entity'], function ($q) use ($column, $searchTerm) {
-                        $q->where($this->getColumnWithTableNamePrefixed($q, $column['attribute']), 'like', '%'.$searchTerm.'%');
+                        $q->where($column['attribute'], 'like', '%'.$searchTerm.'%');
                     });
                     break;
 
@@ -212,22 +212,33 @@ trait Search
             $row_items[] = $this->getCellView($column, $entry, $rowNumber);
         }
 
-        // add the buttons as the last column
         if ($this->buttons()->where('stack', 'line')->count()) {
-            $row_items[] = \View::make('crud::inc.button_stack', ['stack' => 'line'])
-                                ->with('crud', $this)
-                                ->with('entry', $entry)
-                                ->with('row_number', $rowNumber)
-                                ->render();
+            
+            $button_html = '';
+            if ($this->hasAccess('update'))
+            {
+                $button_html .= '<a href="' . url($this->route.'/'.$entry->getKey().'/edit') . '" class="btn btn-sm btn-link"><i class="la la-edit"></i> ' . trans('backpack::crud.edit')  . '</a>';
+            }
+            if ($this->hasAccess('delete'))
+            {
+                $button_html .= '<a href="javascript:void(0)" onclick="deleteEntry(this)" data-route="' . url($this->route.'/'.$entry->getKey()) . '" class="btn btn-sm btn-link" data-button-type="delete"><i class="la la-trash"></i> ' . trans('backpack::crud.delete') . '</a>';
+            }
+            $row_items[] = $button_html;
+            // $row_items[] = \View::make('crud::inc.button_stack', ['stack' => 'line'])
+            //                     ->with('crud', $this)
+            //                     ->with('entry', $entry)
+            //                     ->with('row_number', $rowNumber)
+            //                     ->render();
         }
 
         // add the details_row button to the first column
         if ($this->getOperationSetting('detailsRow')) {
-            $details_row_button = \View::make('crud::columns.inc.details_row_button')
-                                           ->with('crud', $this)
-                                           ->with('entry', $entry)
-                                           ->with('row_number', $rowNumber)
-                                           ->render();
+            $details_row_button = '<span class="details-control text-center cursor-pointer m-r-5"><i class="la la-plus-square details-row-button cursor-pointer" data-entry-id="' . $entry->getKey() . '"></i></span>';
+            // $details_row_button = \View::make('crud::columns.inc.details_row_button')
+            //                                ->with('crud', $this)
+            //                                ->with('entry', $entry)
+            //                                ->with('row_number', $rowNumber)
+            //                                ->render();
             $row_items[0] = $details_row_button.$row_items[0];
         }
 
@@ -263,6 +274,9 @@ trait Search
         }
 
         if (isset($column['type'])) {
+            if ($column['type'] === 'fasttext' || $column['type'] === 'fastclosure') {
+                return null;
+            }
             // if the column has been overwritten return that one
             if (view()->exists('vendor.backpack.crud.columns.'.$column['type'])) {
                 return 'vendor.backpack.crud.columns.'.$column['type'];
@@ -288,6 +302,10 @@ trait Search
      */
     private function renderCellView($view, $column, $entry, $rowNumber = false)
     {
+        if ($view === null) {
+            return '<span>' . data_get($entry, $column['name']) . '</span>';
+        }   
+
         if (! view()->exists($view)) {
             $view = 'crud::columns.text'; // fallback to text column
         }
@@ -324,17 +342,5 @@ trait Search
             'recordsFiltered' => $filteredRows,
             'data'            => $rows,
         ];
-    }
-
-    /**
-     * Return the column attribute (column in database) prefixed with table to use in search.
-     *
-     * @param \Illuminate\Database\Eloquent\Builder $query
-     * @param string $column
-     * @return string
-     */
-    public function getColumnWithTableNamePrefixed($query, $column)
-    {
-        return $query->getModel()->getTableWithPrefix().'.'.$column;
     }
 }
